@@ -3,9 +3,7 @@ const { curry, forEach } = require("lodash");
 const fs = require("fs");
 const toMarkdown = require("to-markdown");
 
-const headers = {
-  Authorization: `Bearer PUT_YOUR_TOKEN_HERE`
-};
+const headers = { Authorization: `Bearer ${process.argv[2]}` };
 const fetch = (url, opts = {}) =>
   axios(url, Object.assign({}, { headers }, opts));
 
@@ -15,45 +13,73 @@ const logErr = err => {
   return;
 };
 
+const timeout = ms => {
+  console.log(`⏰ Waiting`);
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
 // fetchPrivateFolder :: (number) => Promise<*>
-const fetchPrivateFolder = id =>
-  fetch(`https://platform.quip.com/1/folders/${id}`);
+const fetchPrivateFolder = async id => {
+  await timeout(60000);
+  const data = await fetch(`https://platform.quip.com/1/folders/${id}`);
+  return data;
+};
 
 // fetchDocs :: (Array<number>, string) => Promise<*>
-const fetchDocs = (children, folderName = "output") => {
-  fs.mkdir(folderName, 0o777, err => {
-    if (err) return logErr(`❌ Failed to create folder ${folderName}. ${err}`);
+const fetchDocs = async (children, folderName = "output") => {
+  try {
+    fs.mkdir(folderName, 0o777, err => {
+      if (err)
+        return logErr(`❌ Failed to create folder ${folderName}. ${err}`);
+      console.log(`🗂 ${folderName} created successfully`);
+    });
 
-    console.log(`🗂 ${folderName} created successfully`);
-  });
+    const ids = children
+      .filter(thread => !!thread.thread_id && !(`restricted` in thread))
+      .map(({ thread_id }) => thread_id)
+      .join(",");
 
-  const ids = children
-    .filter(({ thread_id }) => !!thread_id)
-    .map(({ thread_id }) => thread_id)
-    .join(",");
+    const folderIds = children
+      .filter(folder => !!folder.folder_id && !(`restricted` in folder))
+      .map(({ folder_id }) => folder_id);
 
-  const folderIds = children
-    .filter(({ folder_id }) => !!folder_id)
-    .map(({ folder_id }) => folder_id);
-
-  forEach(folderIds, folderId => fetchThreads(folderId, folderName));
-
-  return fetch(`https://platform.quip.com/1/threads/?ids=${ids}`).then(
-    writeFiles(folderName)
-  );
+    if (folderIds.length > 0) {
+      await forEach(folderIds, async folderId => {
+        await timeout(60000);
+        await fetchThreads(folderId, folderName);
+      });
+    }
+    if (ids) {
+      await timeout(60000);
+      const data = await fetch(
+        `https://platform.quip.com/1/threads/?ids=${ids}`
+      );
+      await writeFiles(folderName, data);
+    }
+    return;
+  } catch (error) {
+    logErr(error);
+  }
 };
 
 // fetchThreads :: (number, string) => Promise<*>
-const fetchThreads = (folderId, parentDir) => {
-  return fetch(`https://platform.quip.com/1/folders/${folderId}`).then(
-    ({ data }) => {
-      forEach(data, folder => {
-        if (!folder.title) return;
+const fetchThreads = async (folderId, parentDir) => {
+  try {
+    await timeout(60000);
+    const { data } = await fetch(
+      `https://platform.quip.com/1/folders/${folderId}`
+    );
 
-        fetchDocs(data.children, `${parentDir}/${folder.title}`);
-      });
-    }
-  );
+    await forEach(data, async folder => {
+      if (!folder.title) return;
+      await timeout(60000);
+      await fetchDocs(data.children, `${parentDir}/${folder.title}`);
+    });
+
+    return;
+  } catch (error) {
+    logErr(error);
+  }
 };
 
 // writeFiles :: Object => void
@@ -77,24 +103,27 @@ const writeFiles = curry((folderName, { data }) => {
 });
 
 // main :: () => void
-const main = () => {
-  // if (!process.argv[2]) {
-  //   console.log("❌ Please provide your Quip API token. Exiting.");
-  //   process.exitCode = 1;
-  //   return;
-  // }
+const main = async () => {
+  if (!process.argv[2]) {
+    console.log("❌ Please provide your Quip API token. Exiting.");
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    // await timeout(60000);
+    // const userData = await fetch("https://platform.quip.com/1/users/current");
+    // if (userData.status !== 200)
+    //   throw new Error(`❌ Error: ${userData.statusText}`);
+    // const startDir = userData.data.private_folder_id;
+    const startDir = "JKOAOALS106";
 
-  return fetch("https://platform.quip.com/1/users/current")
-    .then(res => {
-      return new Promise((resolve, reject) => {
-        if (res.status !== 200) return reject(`❌ Error: ${res.statusText}`);
-        resolve("WbbAOARBm0v"); // The ID for InUnison
-      });
-    })
-    .then(fetchPrivateFolder)
-    .then(({ data: { children } }) => children)
-    .then(fetchDocs)
-    .catch(logErr);
+    let {
+      data: { children }
+    } = await fetchPrivateFolder(startDir);
+    await fetchDocs(children);
+  } catch (error) {
+    logErr(error);
+  }
 };
 
 main();
