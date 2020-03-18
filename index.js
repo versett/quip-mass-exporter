@@ -1,5 +1,4 @@
 const axios = require("axios");
-const { curry, forEach } = require("lodash");
 const fs = require("fs");
 const toMarkdown = require("to-markdown");
 
@@ -20,7 +19,7 @@ const timeout = ms => {
 
 // fetchPrivateFolder :: (number) => Promise<*>
 const fetchPrivateFolder = async id => {
-  await timeout(60000);
+  await timeout(10000);
   const data = await fetch(`https://platform.quip.com/1/folders/${id}`);
   return data;
 };
@@ -44,13 +43,13 @@ const fetchDocs = async (children, folderName = "output") => {
       .map(({ folder_id }) => folder_id);
 
     if (folderIds.length > 0) {
-      await forEach(folderIds, async folderId => {
-        await timeout(60000);
+      await folderIds.forEach(async folderId => {
+        await timeout(10000);
         await fetchThreads(folderId, folderName);
       });
     }
     if (ids) {
-      await timeout(60000);
+      await timeout(10000);
       const data = await fetch(
         `https://platform.quip.com/1/threads/?ids=${ids}`
       );
@@ -65,16 +64,14 @@ const fetchDocs = async (children, folderName = "output") => {
 // fetchThreads :: (number, string) => Promise<*>
 const fetchThreads = async (folderId, parentDir) => {
   try {
-    await timeout(60000);
+    await timeout(10000);
     const { data } = await fetch(
       `https://platform.quip.com/1/folders/${folderId}`
     );
 
-    await forEach(data, async folder => {
-      if (!folder.title) return;
-      await timeout(60000);
-      await fetchDocs(data.children, `${parentDir}/${folder.title}`);
-    });
+    if (!data.folder.title) return;
+    await timeout(10000);
+    await fetchDocs(data.children, `${parentDir}/${data.folder.title}`);
 
     return;
   } catch (error) {
@@ -83,8 +80,9 @@ const fetchThreads = async (folderId, parentDir) => {
 };
 
 // writeFiles :: Object => void
-const writeFiles = curry((folderName, { data }) => {
-  forEach(data, ({ thread, html }) => {
+const writeFiles = (folderName, { data }) => {
+  data = Object.values(data);
+  data.forEach(({ thread, html }) => {
     const file = thread.title.replace(/\//g, "");
     const fileName = `${folderName}/${file}`;
 
@@ -100,7 +98,7 @@ const writeFiles = curry((folderName, { data }) => {
       console.log(`✅ ${fileName}.md saved successfully`);
     });
   });
-});
+};
 
 // main :: () => void
 const main = async () => {
@@ -110,7 +108,7 @@ const main = async () => {
     return;
   }
   try {
-    // await timeout(60000);
+    // await timeout(10000);
     // const userData = await fetch("https://platform.quip.com/1/users/current");
     // if (userData.status !== 200)
     //   throw new Error(`❌ Error: ${userData.statusText}`);
