@@ -55,6 +55,11 @@ aws4@^1.2.1:
   version "1.6.0"
   resolved "https://registry.yarnpkg.com/aws4/-/aws4-1.6.0.tgz#83ef5ca860b2b32e4a0deedee8c771b9db57471e"
 
+axios-rate-limit@^1.2.1:
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/axios-rate-limit/-/axios-rate-limit-1.2.1.tgz#1c27d79923d5d0d7774044cd94b34996d1b6a757"
+  integrity sha512-SBhBSDkqhimykrQf39KQ6aoXJC4kEvVhz9N2FIk0rdzZpP9PubvR9AyXzvUnTPAMj863LJKKywHrPfDpeZ0WLQ==
+
 axios@^0.15.3:
   version "0.15.3"
   resolved "https://registry.yarnpkg.com/axios/-/axios-0.15.3.tgz#2c9d638b2e191a08ea1d6cc988eadd6ba5bdc053"

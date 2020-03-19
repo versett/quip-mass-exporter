@@ -1,10 +1,13 @@
 const axios = require("axios");
+const rateLimit = require("axios-rate-limit");
 const fs = require("fs");
 const toMarkdown = require("to-markdown");
 
-const headers = { Authorization: `Bearer ${process.argv[2]}` };
-const fetch = (url, opts = {}) =>
-  axios(url, Object.assign({}, { headers }, opts));
+const fetch = rateLimit(axios.create(), {
+  maxRequests: 1,
+  perMilliseconds: 5000 // 1500 per hour = 1 per 2400ms
+});
+fetch.defaults.headers.common["Authorization"] = `Bearer ${process.argv[2]}`;
 
 const logErr = err => {
   console.error(err);
@@ -12,26 +15,22 @@ const logErr = err => {
   return;
 };
 
-const timeout = ms => {
-  console.log(`⏰ Waiting`);
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
-
 // fetchPrivateFolder :: (number) => Promise<*>
 const fetchPrivateFolder = async id => {
-  await timeout(10000);
-  const data = await fetch(`https://platform.quip.com/1/folders/${id}`);
+  const data = await fetch.get(`https://platform.quip.com/1/folders/${id}`);
   return data;
 };
 
 // fetchDocs :: (Array<number>, string) => Promise<*>
 const fetchDocs = async (children, folderName = "output") => {
   try {
-    fs.mkdir(folderName, 0o777, err => {
-      if (err)
-        return logErr(`❌ Failed to create folder ${folderName}. ${err}`);
-      console.log(`🗂 ${folderName} created successfully`);
-    });
+    if (!fs.existsSync(folderName)) {
+      fs.mkdir(folderName, 0o777, err => {
+        if (err)
+          return logErr(`❌ Failed to create folder ${folderName}. ${err}`);
+        console.log(`🗂 ${folderName} created successfully`);
+      });
+    }
 
     const ids = children
       .filter(thread => !!thread.thread_id && !(`restricted` in thread))
@@ -44,13 +43,11 @@ const fetchDocs = async (children, folderName = "output") => {
 
     if (folderIds.length > 0) {
       await folderIds.forEach(async folderId => {
-        await timeout(10000);
         await fetchThreads(folderId, folderName);
       });
     }
     if (ids) {
-      await timeout(10000);
-      const data = await fetch(
+      const data = await fetch.get(
         `https://platform.quip.com/1/threads/?ids=${ids}`
       );
       await writeFiles(folderName, data);
@@ -64,14 +61,15 @@ const fetchDocs = async (children, folderName = "output") => {
 // fetchThreads :: (number, string) => Promise<*>
 const fetchThreads = async (folderId, parentDir) => {
   try {
-    await timeout(10000);
-    const { data } = await fetch(
+    const { data } = await fetch.get(
       `https://platform.quip.com/1/folders/${folderId}`
     );
 
     if (!data.folder.title) return;
-    await timeout(10000);
-    await fetchDocs(data.children, `${parentDir}/${data.folder.title}`);
+    await fetchDocs(
+      data.children,
+      `${parentDir}/${data.folder.title.replace(/\//g, "-")}`
+    );
 
     return;
   } catch (error) {
@@ -82,7 +80,7 @@ const fetchThreads = async (folderId, parentDir) => {
 // writeFiles :: Object => void
 const writeFiles = (folderName, { data }) => {
   data = Object.values(data);
-  data.forEach(({ thread, html }) => {
+  data.forEach(async ({ thread, html }) => {
     const file = thread.title.replace(/\//g, "");
     const fileName = `${folderName}/${file}`;
 
@@ -97,6 +95,34 @@ const writeFiles = (folderName, { data }) => {
 
       console.log(`✅ ${fileName}.md saved successfully`);
     });
+
+    /**
+     * This creates files based on type.
+     *
+     * Currently, something in the Versett folder is causing this to fail.
+     */
+    let fileType = "pdf";
+    switch (thread.type) {
+      case "document":
+        fileType = "docx";
+        break;
+      case "spreadsheet":
+        fileType = "xlsx";
+        break;
+    }
+
+    const {
+      data: fileStream
+    } = await fetch.get(
+      `https://platform.quip.com/1/threads/${thread.id}/export/${fileType}`,
+      { responseType: "arraybuffer" }
+    );
+    fs.writeFile(`${fileName}.${fileType}`, fileStream, err => {
+      if (err)
+        return logErr(`❌ Failed to save ${fileName}.${fileType}. ${err}`);
+
+      console.log(`✅ ${fileName}.${fileType} saved successfully`);
+    });
   });
 };
 
@@ -108,11 +134,6 @@ const main = async () => {
     return;
   }
   try {
-    // await timeout(10000);
-    // const userData = await fetch("https://platform.quip.com/1/users/current");
-    // if (userData.status !== 200)
-    //   throw new Error(`❌ Error: ${userData.statusText}`);
-    // const startDir = userData.data.private_folder_id;
     const startDir = "JKOAOALS106";
 
     let {

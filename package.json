@@ -25,6 +25,7 @@
   "homepage": "https://github.com/bmakuh/quip-mass-exporter#readme",
   "dependencies": {
     "axios": "^0.15.3",
+    "axios-rate-limit": "^1.2.1",
     "fs": "^0.0.1-security",
     "lodash": "^4.17.4",
     "to-markdown": "^3.0.4"
